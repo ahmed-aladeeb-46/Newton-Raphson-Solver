@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Newton-Raphson Method Solver</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.8.0/math.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1000px;
+            margin: auto;
+            background: #1e293b;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.4);
+        }
+        h1 {
+            text-align: center;
+            color: #38bdf8;
+            margin-bottom: 20px;
+        }
+        .controls {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr auto;
+            gap: 15px;
+            align-items: end;
+            margin-bottom: 20px;
+        }
+        .input-group {
+            display: flex;
+            flex-direction: column;
+        }
+        label {
+            margin-bottom: 6px;
+            font-size: 14px;
+            color: #cbd5e1;
+        }
+        input {
+            padding: 10px 12px;
+            border-radius: 8px;
+            border: 1px solid #334155;
+            background: #0f172a;
+            color: #fff;
+            font-size: 16px;
+            direction: ltr;
+        }
+        button {
+            padding: 11px 24px;
+            background: #0284c7;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        button:hover {
+            background: #0369a1;
+        }
+        .summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .card {
+            background: #0f172a;
+            padding: 15px;
+            border-radius: 8px;
+            border-right: 4px solid #38bdf8;
+        }
+        .card span {
+            display: block;
+            font-size: 13px;
+            color: #94a3b8;
+        }
+        .card strong {
+            font-size: 18px;
+            color: #f8fafc;
+            direction: ltr;
+            display: inline-block;
+            margin-top: 5px;
+        }
+        .grid-output {
+            display: grid;
+            grid-template-columns: 1fr 1.2fr;
+            gap: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #0f172a;
+            border-radius: 8px;
+            overflow: hidden;
+            direction: ltr;
+        }
+        th, td {
+            padding: 10px;
+            text-align: center;
+            border-bottom: 1px solid #1e293b;
+            font-size: 14px;
+        }
+        th {
+            background: #334155;
+            color: #38bdf8;
+        }
+        #plot {
+            background: #0f172a;
+            border-radius: 8px;
+            min-height: 400px;
+        }
+        .error-msg {
+            background: #7f1d1d;
+            color: #fecaca;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            display: none;
+        }
+        @media (max-width: 768px) {
+            .controls, .grid-output {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>حساب جذور الدوال غير الخطية (Newton-Raphson)</h1>
+
+    <div id="errorBox" class="error-msg"></div>
+
+    <div class="controls">
+        <div class="input-group">
+            <label>الدالة غير الخطية f(x)</label>
+            <input type="text" id="funcInput" value="x^3 - 2*x - 5" placeholder="مثال: x^3 - 2*x - 5">
+        </div>
+        <div class="input-group">
+            <label>القيمة الابتدائية (X₀)</label>
+            <input type="number" id="x0Input" value="2" step="any">
+        </div>
+        <div class="input-group">
+            <label>دقة التوقف (Tolerance)</label>
+            <input type="number" id="tolInput" value="0.000001" step="any">
+        </div>
+        <button onclick="solveNewton()">احسب وارسم</button>
+    </div>
+
+    <div class="summary" id="summaryCards" style="display:none;">
+        <div class="card">
+            <span>الجذر النهائي (Root)</span>
+            <strong id="rootVal">-</strong>
+        </div>
+        <div class="card">
+            <span>عدد مرات التعويض (Iterations)</span>
+            <strong id="iterCount">-</strong>
+        </div>
+        <div class="card">
+            <span>المشتقة الأولى f'(x)</span>
+            <strong id="derivStr">-</strong>
+        </div>
+        <div class="card">
+            <span>شرط التقارب عند X₀</span>
+            <strong id="convStatus">-</strong>
+        </div>
+    </div>
+
+    <div class="grid-output">
+        <div style="max-height: 420px; overflow-y: auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>i</th>
+                        <th>xᵢ</th>
+                        <th>f(xᵢ)</th>
+                        <th>Error |xᵢ - xᵢ₋₁|</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody"></tbody>
+            </table>
+        </div>
+        <div id="plot"></div>
+    </div>
+</div>
+
+<script>
+    function solveNewton() {
+        const errorBox = document.getElementById('errorBox');
+        errorBox.style.display = 'none';
+
+        const funcText = document.getElementById('funcInput').value.trim();
+        const x0 = parseFloat(document.getElementById('x0Input').value);
+        const tol = parseFloat(document.getElementById('tolInput').value) || 1e-6;
+        const maxIter = 50;
+
+        if (!funcText || isNaN(x0)) {
+            showError("يرجى إدخال الدالة والقيمة الابتدائية X₀ بشكل صحيح.");
+            return;
+        }
+
+        let node, d1Node, d2Node;
+        try {
+            node = math.parse(funcText);
+            d1Node = math.derivative(node, 'x');
+            d2Node = math.derivative(d1Node, 'x');
+        } catch (e) {
+            showError("صيغة الدالة غير صحيحة، تأكد من كتابة علامة الضرب مثل 2*x.");
+            return;
+        }
+
+        const f = (val) => node.evaluate({ x: val });
+        const df = (val) => d1Node.evaluate({ x: val });
+        const d2f = (val) => d2Node.evaluate({ x: val });
+
+        let f0, df0, d2f0;
+        try {
+            f0 = f(x0);
+            df0 = df(x0);
+            d2f0 = d2f(x0);
+        } catch (e) {
+            showError("تعذر حساب قيمة الدالة عند X₀.");
+            return;
+        }
+
+        const convVal = Math.abs((f0 * d2f0) / Math.pow(df0, 2));
+        const convText = isFinite(convVal)
+            ? `${convVal.toFixed(4)} (${convVal < 1 ? 'متحقق < 1' : 'غير متحقق > 1'})`
+            : 'غير معرف';
+
+        const steps = [];
+        let xCurr = x0;
+        steps.push({ i: 0, x: xCurr, fx: f0, err: '-' });
+
+        let converged = false;
+        for (let i = 1; i <= maxIter; i++) {
+            const fx = f(xCurr);
+            const dfx = df(xCurr);
+
+            if (Math.abs(dfx) < 1e-12) {
+                showError(`توقف الحل عند التكرار ${i} لأن المشتقة تساوي صفر.`);
+                break;
+            }
+
+            const xNext = xCurr - (fx / dfx);
+            if (!isFinite(xNext) || Math.abs(xNext) > 1e9) {
+                showError("الدالة تتباعد بعيداً عن الجذر، جرب قيمة X₀ أقرب.");
+                break;
+            }
+
+            const err = Math.abs(xNext - xCurr);
+            steps.push({ i: i, x: xNext, fx: f(xNext), err: err.toFixed(6) });
+            xCurr = xNext;
+
+            if (err < tol) {
+                converged = true;
+                break;
+            }
+        }
+
+        document.getElementById('summaryCards').style.display = 'grid';
+        document.getElementById('rootVal').textContent = xCurr.toFixed(6);
+        document.getElementById('iterCount').textContent = steps.length - 1;
+        document.getElementById('derivStr').textContent = d1Node.toString();
+        document.getElementById('convStatus').textContent = convText;
+
+        const tbody = document.getElementById('tableBody');
+        tbody.innerHTML = '';
+        steps.forEach(s => {
+            const row = `<tr>
+                <td>${s.i}</td>
+                <td>${s.x.toFixed(6)}</td>
+                <td>${s.fx.toFixed(6)}</td>
+                <td>${s.err}</td>
+            </tr>`;
+            tbody.innerHTML += row;
+        });
+
+        drawPlot(f, steps, xCurr);
+    }
+
+    function drawPlot(f, steps, root) {
+        const xs = steps.map(s => s.x);
+        let minX = Math.min(...xs);
+        let maxX = Math.max(...xs);
+        const span = Math.max((maxX - minX) * 0.4, 2);
+        minX -= span;
+        maxX += span;
+
+        const curveX = [];
+        const curveY = [];
+        const totalPoints = 300;
+        const stepSize = (maxX - minX) / totalPoints;
+
+        for (let j = 0; j <= totalPoints; j++) {
+            const xVal = minX + j * stepSize;
+            const yVal = f(xVal);
+            if (isFinite(yVal) && Math.abs(yVal) < 1e5) {
+                curveX.push(xVal);
+                curveY.push(yVal);
+            }
+        }
+
+        const traceCurve = {
+            x: curveX,
+            y: curveY,
+            mode: 'lines',
+            name: 'f(x)',
+            line: { color: '#38bdf8', width: 3 }
+        };
+
+        const tracePoints = {
+            x: steps.map(s => s.x),
+            y: steps.map(s => s.fx),
+            mode: 'lines+markers+text',
+            name: 'نقاط التعويض',
+            text: steps.map(s => `x${s.i}`),
+            textposition: 'top center',
+            marker: { color: '#f59e0b', size: 9 },
+            line: { color: '#f59e0b', dash: 'dot', width: 1.5 }
+        };
+
+        const traceRoot = {
+            x: [root],
+            y: [0],
+            mode: 'markers',
+            name: 'الجذر (Root)',
+            marker: { color: '#22c55e', size: 13, symbol: 'star' }
+        };
+
+        const layout = {
+            paper_bgcolor: '#0f172a',
+            plot_bgcolor: '#0f172a',
+            font: { color: '#f8fafc' },
+            margin: { t: 30, r: 20, l: 40, b: 40 },
+            xaxis: { title: 'x', gridcolor: '#1e293b', zerolinecolor: '#64748b' },
+            yaxis: { title: 'f(x)', gridcolor: '#1e293b', zerolinecolor: '#64748b' },
+            legend: { orientation: 'h', y: 1.12 }
+        };
+
+        Plotly.newPlot('plot', [traceCurve, tracePoints, traceRoot], layout, { responsive: true });
+    }
+
+    function showError(msg) {
+        const errorBox = document.getElementById('errorBox');
+        errorBox.textContent = msg;
+        errorBox.style.display = 'block';
+    }
+
+    window.onload = solveNewton;
+</script>
+
+</body>
+</html>
